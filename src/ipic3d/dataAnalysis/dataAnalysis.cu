@@ -119,11 +119,11 @@ int analysisEntre(c_Solver& KCode, int cycle){
         // histogram
         auto histogramSpeciesOutputPath = HistogramSubDomainOutputPath + "species" + std::to_string(i) + "/";
         velocityHistogram.init(&velocitySoACUDA, cycle, KCode.streams[i]);
-        velocityHistogram.writeToFileFloat(histogramSpeciesOutputPath, KCode.streams[i]);
+        // velocityHistogram.writeToFileFloat(histogramSpeciesOutputPath, KCode.streams[i]);
 
         // GMM
-        auto GMMSpeciesOutputPath = GMMSubDomainOutputPath + "species" + std::to_string(i) + "/";
-        GMMAnalysisSpecies(&velocityHistogram, cycle, GMMSpeciesOutputPath, KCode.cudaDeviceOnNode);
+        // auto GMMSpeciesOutputPath = GMMSubDomainOutputPath + "species" + std::to_string(i) + "/";
+        // GMMAnalysisSpecies(&velocityHistogram, cycle, GMMSpeciesOutputPath, KCode.cudaDeviceOnNode);
     }
 
     return 0;

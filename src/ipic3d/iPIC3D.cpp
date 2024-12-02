@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
     //calculated from particles position and celocity, then mapped to node(grid) for further solving
     // some are mapped to cell center
     
-    KCode.WriteOutput(i);
+    // KCode.WriteOutput(i);
     // print out total time for all tasks
 #ifdef LOG_TASKS_TOTAL_TIME
     timeTasks.print_cycle_times(i);
