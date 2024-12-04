@@ -135,9 +135,9 @@ int analysisEntre(c_Solver& KCode, int cycle){
  */
 std::future<int> startAnalysis(c_Solver& KCode, int cycle){
 
-    if(cycle % 50 != 0){
-        return std::future<int>();
-    }
+    // if(cycle % 50 != 0){
+    //     return std::future<int>();
+    // }
 
     std::future<int> analysisFuture = std::async(analysisEntre, std::ref(KCode), cycle);
 
