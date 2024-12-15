@@ -372,8 +372,9 @@ public:
 private:
 
     int reduceBlockNum(int dataSize, int blockSize){
-        if(dataSize < 4096)dataSize = 4096;
-        auto blockNum = getGridSize(dataSize / 4096, blockSize); // 4096 elements per thread
+        constexpr int elementPerThread = 8; // 8 elements per thread, as the input is 10000
+        if(dataSize < elementPerThread)dataSize = elementPerThread;
+        auto blockNum = getGridSize(dataSize / elementPerThread, blockSize); 
         blockNum = blockNum > 1024 ? 1024 : blockNum;
 
         if(reductionTempArraySize < blockNum){
@@ -419,7 +420,7 @@ private:
         cudaReduction::reduceSumPreProcess<T, blockSize, cudaReduction::PreProcessType::none, void, U, true> // weighted sum
             <<<blockNum, blockSize, blockSize*sizeof(T), GMMStream>>>
             (tempArrayCUDA, reductionTempArrayCUDA, dataHostPtr->getNumData(), nullptr, dataHostPtr->getWeight());
-        cudaReduction::reduceSumWarp<T><<<1, 32, 0, GMMStream>>>(reductionTempArrayCUDA, logLikelihoodCUDA, blockNum);
+        cudaReduction::reduceSumWarp<T><<<1, WARP_SIZE, 0, GMMStream>>>(reductionTempArrayCUDA, logLikelihoodCUDA, blockNum);
 
         cudaErrChk(cudaMemcpyAsync(logResult, logLikelihoodCUDA, sizeof(T), cudaMemcpyDefault, GMMStream));
 
@@ -444,7 +445,7 @@ private:
                 (posteriorComponent, reductionTempArrayCUDA, dataHostPtr->getNumData());
 
             cudaReduction::reduceMaxWarp<T>
-                <<<1, 32, 0, GMMStream>>>
+                <<<1, WARP_SIZE, 0, GMMStream>>>
                 (reductionTempArrayCUDA, maxValueArray + component, blockNum);
 
             // reduction sum with pre-process and post-process to get the log Posterior_k 
@@ -453,7 +454,7 @@ private:
                 (posteriorComponent, reductionTempArrayCUDA, dataHostPtr->getNumData(), maxValueArray + component, dataHostPtr->getWeight());
             
             cudaReduction::reduceSumWarpPostProcess<T, cudaReduction::PostProcessType::logAdd, T>
-                <<<1, 32, 0, GMMStream>>>
+                <<<1, WARP_SIZE, 0, GMMStream>>>
                 (reductionTempArrayCUDA, PosteriorCUDA + component, blockNum, maxValueArray + component);
 
         }
@@ -477,7 +478,7 @@ private:
 
                 // divide by the Posterior_k, can be post processed with the reduction sum warp
                 cudaReduction::reduceSumWarpPostProcess<T, cudaReduction::PostProcessType::divideEXP, T>
-                    <<<1, 32, 0, GMMStream>>>
+                    <<<1, WARP_SIZE, 0, GMMStream>>>
                     (reductionTempArrayCUDA, meanCUDA + component*dataHostPtr->getDim() + dim, blockNum, PosteriorCUDA + component);
             }
         }
@@ -509,7 +510,7 @@ private:
                     (coVarianceComponent + element*dataHostPtr->getNumData(), reductionTempArrayCUDA, dataHostPtr->getNumData(), nullptr, dataHostPtr->getWeight());
                     
                 cudaReduction::reduceSumWarpPostProcess<T, cudaReduction::PostProcessType::divideEXP, T>
-                    <<<1, 32, 0, GMMStream>>>
+                    <<<1, WARP_SIZE, 0, GMMStream>>>
                     (reductionTempArrayCUDA, coVarianceCUDA + component*dataDim*dataDim + element, blockNum, PosteriorCUDA + component);
             }
         }
