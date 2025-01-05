@@ -73,7 +73,8 @@ __global__ void moverKernel(moverParameter *moverParam,
     commonType currErr = PC_err_2 + 1.; // initialize to a larger value
 
     // calculate the average velocity iteratively
-    while (currErr > PC_err_2 && innter < moverParam->NiterMover)
+    //    while (currErr > PC_err_2 && innter < moverParam->NiterMover)
+    while ( innter < 10 )
     {
 
         // compute weights for field components

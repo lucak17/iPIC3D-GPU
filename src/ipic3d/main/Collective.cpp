@@ -1211,8 +1211,10 @@ void Collective::Print() {
   cout << "Simulation Parameters" << endl;
   cout << "---------------------" << endl;
   cout << "Number of species    = " << ns << endl;
-  for (int i = 0; i < ns; i++)
+  for (int i = 0; i < ns; i++){
     cout << "qom[" << i << "] = " << qom[i] << endl;
+    cout << "Npcel[" << i << "] = " << npcelx[i] << ", " << npcely[i] << ", " << npcelz[i] << endl;
+  }
   cout << "x-Length                 = " << Lx << endl;
   cout << "y-Length                 = " << Ly << endl;
   cout << "z-Length                 = " << Lz << endl;
