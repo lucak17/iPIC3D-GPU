@@ -12,10 +12,10 @@ inline constexpr bool VELOCITY_HISTOGRAM_ENABLE = true;
 inline constexpr bool GMM_ENABLE = true;
 
 inline const std::string DATA_ANALYSIS_OUTPUT_DIR = "./";
-inline constexpr int DATA_ANALYSIS_EVERY_CYCLE = 100; // 0 to disable
+inline constexpr int DATA_ANALYSIS_EVERY_CYCLE = 50; // 0 to disable
 
 // Histogram configuration
-inline constexpr int VELOCITY_HISTOGRAM_RES = 100; // must be multiply of VELOCITY_HISTOGRAM_TILE
+inline constexpr int VELOCITY_HISTOGRAM_RES = 200; // must be multiply of VELOCITY_HISTOGRAM_TILE
 inline constexpr int VELOCITY_HISTOGRAM_TILE = 100;
 inline constexpr bool HISTOGRAM_OUTPUT = true;
 inline const std::string HISTOGRAM_OUTPUT_DIR = DATA_ANALYSIS_OUTPUT_DIR + "velocityHistogram/";
@@ -34,8 +34,8 @@ inline constexpr bool OUTPUT_ALL_END_GMM = true;
 inline const std::string GMM_OUTPUT_DIR = DATA_ANALYSIS_OUTPUT_DIR + "velocityGMM/";
 inline constexpr int DATA_DIM_GMM = 2; // only works with DATA_DIM = 2 now
 inline constexpr int NUM_ANALYSIS_GMM = 1; // number of GMM analysis
-inline constexpr int NUM_COMPONENT_GMM[NUM_ANALYSIS_GMM] = {4}; // number of components used in GMM - array with length NUM_ANALYSIS_GMM
-inline constexpr int TOTAL_COMPONENT_GMM = 4; // must be the sum of NUM_COMPONENT_GMM
+inline constexpr int NUM_COMPONENT_GMM[NUM_ANALYSIS_GMM] = {12}; // number of components used in GMM - array with length NUM_ANALYSIS_GMM
+inline constexpr int TOTAL_COMPONENT_GMM = 12; // must be the sum of NUM_COMPONENT_GMM
 inline constexpr int MAX_ITERATION_GMM = 100;
 inline constexpr cudaCommonType  THRESHOLD_CONVERGENCE_GMM = 1e-6;
 inline constexpr bool START_WITH_LAST_PARAMETERS_GMM = true; // start GMM iteration with output paramters of last GMM step as initial parameters
@@ -43,7 +43,9 @@ inline constexpr bool CHECK_COVMATRIX_GMM = true;  // safety check on the cov-ma
 inline constexpr bool NORMALIZE_DATA_FOR_GMM = true; // normalize data before GMM such that velocities are in range -1;1
 inline constexpr bool REMOVE_MEAN_GMM = false;  // remove mean from data before GMM
 inline constexpr bool FILTER_WEIGHTS_GMM = false;  // filter GMM data removing data with low weight -> if weight * threshold < max(weight) --> weight = 0
-inline constexpr int WEIGHTS_THRESHOLD_GMM = 100;  // threshold in filtering GMM data 
+inline constexpr int DATA_WEIGHTS_THRESHOLD_GMM = 100;  // threshold in filtering GMM data
+inline constexpr bool PRUNE_COMPONENTS_GMM = true;
+inline constexpr cudaCommonType PRUNE_THRESHOLD_GMM = 0.005;
 inline constexpr cudaCommonType TOLL_COVMATRIX_GMM = 1e-10;
 inline constexpr cudaCommonType EPS_COVMATRIX_GMM = 1e-4;
 

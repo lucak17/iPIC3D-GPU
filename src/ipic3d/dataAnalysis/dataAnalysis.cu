@@ -299,7 +299,7 @@ int dataAnalysisPipelineImpl::GMMAnalysisSpecies(const int cycle, const int spec
 
         gmm.config(&GMMParam, &GMMData);
         gmm.preProcessDataGMM(meanArray);
-        auto convergStep = gmm.initGMM(); // the exact output file name
+        auto convergStep = gmm.initGMM(fileOutputPath); // the exact output file name
         gmm.postProcessDataGMM();
         int moveBackToHost = gmm.moveBackToHostGMM(paramHost_last,offsetInitDataGMM);
         int ret = 0;

@@ -24,7 +24,7 @@ namespace cudaGMMWeightKernel
  */
 template <typename T, int dataDim, typename U>
 __global__ void calcLogLikelihoodForPointsKernel(const cudaGMMWeight::GMMDataMultiDim<T, dataDim, U>* dataCUDAPtr, const T* logWeightVector, const T* meanVector, const T* coVarianceDecomp, 
-                                                    T* logLikelihoodForPoints, U* weights, const int numComponents){
+                                                    T* logLikelihoodForPoints, U* weights, const int numComponents, const bool* flagActiveComponents){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     auto numData = dataCUDAPtr->getNumData();
     if(idx >= numData)return;
@@ -33,10 +33,16 @@ __global__ void calcLogLikelihoodForPointsKernel(const cudaGMMWeight::GMMDataMul
         T xMinusMean[dataDim];  // (x - mean)
         T coVarianceNeg1TimesXMinusMean[dataDim]; // coVariance^-1 * (x - mean)
 
-        for(int component = 0; component < numComponents; component++){
+        for(int component = 0; component < numComponents; component++){ 
+            
             auto meanComponent = meanVector + component*dataDim;
             auto coVarianceDecompComponent = coVarianceDecomp + component*dataDim*dataDim;
             auto logLikelihoods = logLikelihoodForPoints + component*numData; // p(x_i|mean,coVariance)
+
+            if (!flagActiveComponents[component]){
+                logLikelihoods[idx] = 0.0;
+                continue;
+            }
             
             T sum = 0;
             for(int dim = 0; dim < dataDim; dim++){
@@ -84,6 +90,7 @@ __global__ void calcLogLikelihoodForPointsKernel(const cudaGMMWeight::GMMDataMul
     else
     {
         for(int component = 0; component < numComponents; component++){
+            // if (!flagActiveComponents[component]) continue;
             auto logLikelihoods = logLikelihoodForPoints + component*numData; // p(x_i|mean,coVariance)
             logLikelihoods[idx] =  0.0;
         }
@@ -105,7 +112,7 @@ __global__ void calcLogLikelihoodForPointsKernel(const cudaGMMWeight::GMMDataMul
  */
 template <typename T, int dataDim, typename U>
 __global__ void calcLogLikelihoodPxAndposteriorKernel(const cudaGMMWeight::GMMDataMultiDim<T, dataDim, U>* dataCUDAPtr, const T* logWeightVector, const T* logLikelihoodForPoints, 
-                                                        T* logLikelihood, T* posterior, U* weights, const int numComponents){
+                                                        T* logLikelihood, T* posterior, U* weights, const int numComponents, const bool* flagActiveComponents){
     
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     auto numData = dataCUDAPtr->getNumData();
@@ -117,11 +124,13 @@ __global__ void calcLogLikelihoodPxAndposteriorKernel(const cudaGMMWeight::GMMDa
         T sum = 0;
 
         for(int component = 0; component < numComponents; component++){
+            if(!flagActiveComponents[component])continue;
             T logPxComponent = logWeightVector[component] + logLikelihoodForPoints[component*numData + idx]; // log(weight) + log(p(x_i|mean,coVariance))
             if(logPxComponent > maxValue)maxValue = logPxComponent;
         }
 
         for(int component = 0; component < numComponents; component++){
+            if(!flagActiveComponents[component])continue;
             T logPxComponent = logWeightVector[component] + logLikelihoodForPoints[component*numData + idx]; // log(weight) + log(p(x_i|mean,coVariance))
             sum += exp(logPxComponent - maxValue);
         }
@@ -129,6 +138,10 @@ __global__ void calcLogLikelihoodPxAndposteriorKernel(const cudaGMMWeight::GMMDa
         logLikelihood[idx] = maxValue + log(sum);   
 
         for(int component = 0; component < numComponents; component++){
+            if(!flagActiveComponents[component]){
+                posterior[component*numData + idx] = 0.0;
+                continue;
+            }
             posterior[component*numData + idx] -= logLikelihood[idx];
         }
     }
@@ -136,6 +149,7 @@ __global__ void calcLogLikelihoodPxAndposteriorKernel(const cudaGMMWeight::GMMDa
     {
         logLikelihood[idx] = 0.0;
         for(int component = 0; component < numComponents; component++){
+            // if (!flagActiveComponents[component]) continue;
             posterior[component*numData + idx] = 0.0;
         }
     }
@@ -152,9 +166,10 @@ __global__ void calcLogLikelihoodPxAndposteriorKernel(const cudaGMMWeight::GMMDa
  * @param logPosterior pointer to the posterior_k(Gamma), number of components
  */
 template <typename T>
-__global__ void updateWeightKernel(T* logWeightVector, const T* logPosterior, const int numComponents){
+__global__ void updateWeightKernel(T* logWeightVector, const T* logPosterior, const int numComponents, const bool* flagActiveComponents){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx >= numComponents)return;
+    if(!flagActiveComponents[idx])return;
 
     extern __shared__ T sharedLogMeanTimesPosterior[]; // for each component, the sum 
     sharedLogMeanTimesPosterior[threadIdx.x] = logWeightVector[idx] + logPosterior[idx]; // log(weight_k) + log(Posterior_k)
@@ -162,12 +177,13 @@ __global__ void updateWeightKernel(T* logWeightVector, const T* logPosterior, co
 
     T sum = 0;
     for(int i = 0; i < numComponents; i++){
+        if(!flagActiveComponents[i])continue;
         sum += exp(sharedLogMeanTimesPosterior[i]);
     }
 
     logWeightVector[idx] = sharedLogMeanTimesPosterior[idx] - log(sum);
 
-    if (logWeightVector[idx] < log(1e-6) ) logWeightVector[idx] = log(1e-6); 
+    if (logWeightVector[idx] < log(1e-8) ) logWeightVector[idx] = log(1e-8); 
 }
 
 
@@ -185,7 +201,7 @@ __global__ void updateWeightKernel(T* logWeightVector, const T* logPosterior, co
 template <typename T, int dataDim, typename U>
 __global__ void updateCoVarianceKernel(const cudaGMMWeight::GMMDataMultiDim<T, dataDim, U>* dataCUDAPtr, const T* logPosterior_nk, 
                                                                 const T* logPosterior_k, const T* meanVector, 
-                                                                T* tempCoVarianceForDataPoints, U* weights, const int numComponents){
+                                                                T* tempCoVarianceForDataPoints, U* weights, const int numComponents, const bool* flagActiveComponents){
 
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     auto numData = dataCUDAPtr->getNumData();
@@ -194,6 +210,7 @@ __global__ void updateCoVarianceKernel(const cudaGMMWeight::GMMDataMultiDim<T, d
     {
         // for each component
         for(int component = 0; component < numComponents; component++){
+            if(!flagActiveComponents[component])continue;
             auto logPosterior_nkComponent = logPosterior_nk + component*numData;
             auto meanComponent = meanVector + component*dataDim;
             auto coVarianceComponent = tempCoVarianceForDataPoints + component*numData*dataDim*dataDim;
@@ -216,6 +233,7 @@ __global__ void updateCoVarianceKernel(const cudaGMMWeight::GMMDataMultiDim<T, d
     else
     {
         for(int component = 0; component < numComponents; component++){
+            if(!flagActiveComponents[component])continue;
             auto logPosterior_nkComponent = logPosterior_nk + component*numData;
             auto meanComponent = meanVector + component*dataDim;
             auto coVarianceComponent = tempCoVarianceForDataPoints + component*numData*dataDim*dataDim;
@@ -243,9 +261,10 @@ __global__ void updateCoVarianceKernel(const cudaGMMWeight::GMMDataMultiDim<T, d
  * @param normalizer pointer to the normalizer, number of components
  */
 template <typename T, int dataDim>
-__global__ void decomposeCoVarianceKernel(const T* coVariance, T* coVarianceDecomp, T* normalizer, const int numComponents){
+__global__ void decomposeCoVarianceKernel(const T* coVariance, T* coVarianceDecomp, T* normalizer, const int numComponents, const bool* flagActiveComponents){
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx >= numComponents)return;
+    if(!flagActiveComponents[idx])return;
 
     auto coVarianceComponent = coVariance + idx*dataDim*dataDim;
     auto coVarianceDecompComponent = coVarianceDecomp + idx*dataDim*dataDim;  
@@ -297,9 +316,10 @@ __global__ void decomposeCoVarianceKernel(const T* coVariance, T* coVarianceDeco
  * @param numComponents number of GMM components
  */
 template <typename T, int dataDim>
-__global__ void checkAdjustCoVarianceKernel(T* coVariance, const int numComponents){
+__global__ void checkAdjustCoVarianceKernel(T* coVariance, const int numComponents, const bool* flagActiveComponents){
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx >= numComponents)return;
+    if(!flagActiveComponents[idx])return;
 
     auto coVarianceComponent = coVariance + idx*dataDim*dataDim;
 
@@ -378,9 +398,10 @@ __global__ void normalizePointsKernel(cudaGMMWeight::GMMDataMultiDim<T, dataDim,
  * @param rescaleFactor pointer to the rescale factor, dataDim (here it is assumed that rescaleFactor is homogenues in all dimensions --> to fix later) 
  */
 template <typename T, int dataDim>
-__global__ void normalizeMeanAndCovBack(T* meanVector, T* coVariance, const int numComponents, const T* meanCUDA_all0, const T* rescaleFactor){
+__global__ void normalizeMeanAndCovBack(T* meanVector, T* coVariance, const T* meanCUDA_all0, const T* rescaleFactor, const int numComponents, const bool* flagActiveComponents){
     const int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if(idx >= numComponents)return;
+    if(!flagActiveComponents[idx])return;
 
     auto meanComponent = meanVector + idx*dataDim;
     auto coVarianceComponent = coVariance + idx*dataDim*dataDim;
@@ -464,6 +485,118 @@ __global__ void filterWeightsKernel(cudaGMMWeight::GMMDataMultiDim<T, dataDim, U
         weights[idx] = 0.0;
     }
 }
+
+
+/**
+ * @brief prune GMM components with weight below a given threshold all at the same time --> unsafe
+ * @details this cuda kernel will be launched once for all components, In one block. The shared memory should be sizeof(T) * numComponents
+ * 
+ * @param logWeightVector pointer to the old weight vector, log(weight), number of components
+ * @param weightThreshold the threshold below that components are pruned
+ * @param numComponents num components 
+ * @param flagActiveComponents boolean array with flags that indicate which components are active, number of components
+ */
+template <typename T>
+__global__ void pruneComponentsKernel(T* logWeightVector, const T weightThreshold, const int numComponents, bool* flagActiveComponents){
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if(idx >= numComponents)return;
+
+    extern __shared__ T sharedWeights[]; // for each component, the sum 
+    
+    if (exp(logWeightVector[idx]) < weightThreshold  || !flagActiveComponents[idx])
+    {
+        logWeightVector[idx] = log(1e-15);
+        flagActiveComponents[idx] = false;
+    }
+
+    sharedWeights[idx] = logWeightVector[idx]; 
+    __syncthreads();
+
+    if(!flagActiveComponents[idx])return;
+
+    T sum = 0.0;
+    for(int i = 0; i < numComponents; i++){
+        //if (!flagActiveComponents[i]) continue;
+        sum += exp(sharedWeights[i]);
+    }
+
+
+    logWeightVector[idx] -=  log(sum); 
+}
+
+
+
+/**
+ * @brief prune one GMM component with weight below a given threshold, increase weight of GMM components that have not been pruned and normalize weights
+ * @details this cuda kernel will be launched once for all components, In one block. The shared memory should be sizeof(T) * numComponents
+ * 
+ * @param logWeightVector pointer to the old weight vector, log(weight), number of components
+ * @param weightThreshold the threshold below that components are pruned
+ * @param numComponents num components 
+ * @param flagActiveComponents boolean array with flags that indicate which components are active, number of components
+ */
+template <typename T>
+__global__ void pruneOneComponentKernel(T* logWeightVector, const T weightThreshold, const int numComponents, const bool* flagActiveComponents){
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if(idx >= numComponents)return;
+
+    extern __shared__ T sharedWeights[]; // for each component, the sum 
+    
+    // if one component has a low weight but is active, we se the weight to 0.05
+    if ( flagActiveComponents[idx] && (exp(logWeightVector[idx]) < weightThreshold) ){
+        logWeightVector[idx] = log(0.05);
+    }
+
+    // if one component is not active we set the weight to 1e-15
+    if (!flagActiveComponents[idx]){
+        logWeightVector[idx] = log(1e-15);
+    }
+
+    sharedWeights[idx] = logWeightVector[idx]; 
+    __syncthreads();
+
+    if(!flagActiveComponents[idx])return;
+
+    // normalize weights of active components
+    T sum = 0.0;
+    for(int i = 0; i < numComponents; i++){
+        sum += exp(sharedWeights[i]);
+    }
+
+    logWeightVector[idx] -=  log(sum); 
+}
+
+
+/**
+ * @brief safety check on the GMM components mean vector. Reset the mean vector if it has NaN elements 
+ * @details this cuda kernel will be launched once for all components, In one block
+ * 
+ * @param meanVector pointer to the mean vector, number of components * dataDim
+ * @param numComponents num components 
+ * @param flagActiveComponents boolean array with flags that indicate which components are active, number of components
+ */
+template <typename T,int dataDim>
+__global__ void checkMeanValueComponents(T* meanVector, const int numComponents, const bool* flagActiveComponents){
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if(idx >= numComponents)return;
+    if(!flagActiveComponents[idx])return;
+
+    auto meanComponent = meanVector + idx*dataDim;
+    bool flagNaN = false;
+    for(int i = 0; i < dataDim; i++){
+        if(std::isnan(meanComponent[i])){
+            flagNaN = true;
+            break;
+        }
+    }
+    if(flagNaN){
+        for(int i = 0; i < dataDim; i++){
+            meanComponent[i] = (i*dataDim + idx)/(dataDim*dataDim + numComponents); 
+        }
+    }
+}
+
+
 
 }
 

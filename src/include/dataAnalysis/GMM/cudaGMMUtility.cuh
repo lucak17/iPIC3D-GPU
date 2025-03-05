@@ -80,12 +80,12 @@ template <typename T>
 using GMMParam_t = GMMParam_s<T>;
 
 
+// store output GMM data of the previous DA cycle
 template <typename T>
 struct GMMParam_output_store{
     int numComponents[TOTAL_COMPONENT_GMM];
     int maxIteration;
     T threshold; // the threshold for the log likelihood
-    // these 3 are optional, if not set, they will be initialized with the internal init functions
     T weightVector[TOTAL_COMPONENT_GMM];
     T meanVector[TOTAL_COMPONENT_GMM * DATA_DIM_GMM];
     T coVarianceMatrix[TOTAL_COMPONENT_GMM * DATA_DIM_GMM * DATA_DIM_GMM ];
